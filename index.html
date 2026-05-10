@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Poker Coach</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>♠ AI Poker Coach</h1>
+      <p class="subtitle">World-Champion Mindset · Texas Hold'em</p>
+    </header>
+
+    <!-- Blind Tracker -->
+    <section class="blind-tracker">
+      <div class="bt-header">
+        <h2>🎰 Blind Tracker</h2>
+        <div class="bt-controls">
+          <button id="bt-add-btn" title="Add player (Ctrl+D)">+ Add Player</button>
+          <button id="bt-next">Next Hand →</button>
+        </div>
+      </div>
+      <div class="bt-add-form hidden" id="bt-add-form">
+        <input type="text" id="bt-name-input" placeholder="Enter player name" maxlength="12" />
+        <button id="bt-confirm-add">✓ Add</button>
+        <button id="bt-cancel-add">× Cancel</button>
+      </div>
+      <div id="bt-seats" class="bt-seats"></div>
+      <div class="bt-info" id="bt-info"></div>
+      <div class="bt-legend">
+        <span class="chip d-chip">D</span> Dealer &nbsp;
+        <span class="chip sb-chip">SB</span> Small Blind &nbsp;
+        <span class="chip bb-chip">BB</span> Big Blind &nbsp;
+        <em>Click D / SB / BB on a seat to assign. → rotates all clockwise.</em>
+      </div>
+    </section>
+
+    <!-- Leaderboard -->
+    <section class="leaderboard-section">
+      <div class="lb-header">
+        <h2>🏆 Leaderboard</h2>
+        <button id="lb-new-game" class="lb-new-game-btn">🔄 New Game</button>
+      </div>
+      <div id="lb-table" class="lb-table"></div>
+    </section>
+
+    <!-- Pre-flop Blind Round -->
+    <section class="pfw-section" id="pfw-section">
+      <div class="pfw-header">
+        <h2>🃏 Pre-flop Blind Round</h2>
+        <button id="pfw-reset" class="pfw-reset-btn">↺ Reset</button>
+      </div>
+
+      <!-- Step 1: Set blind amounts -->
+      <div class="pfw-step active" id="pfw-step1">
+        <div class="pfw-step-title"><span class="pfw-step-num">1</span> Blind Amounts</div>
+        <div class="pfw-blinds-row">
+          <div class="pfw-blind-box">
+            <span class="chip sb-chip">SB</span>
+            <span class="pfw-player-name" id="pfw-sb-name">—</span>
+            <span class="pfw-must">must post</span>
+            <input type="text" inputmode="numeric" pattern="[0-9]*" id="pfw-sb-amt" value="5" class="pfw-amt-input" />
+            <span>chips</span>
+          </div>
+          <div class="pfw-blind-box">
+            <span class="chip bb-chip">BB</span>
+            <span class="pfw-player-name" id="pfw-bb-name">—</span>
+            <span class="pfw-must">minimum match:</span>
+            <span class="pfw-bb-min-val" id="pfw-bb-min-display">5</span>
+            <span>chips</span>
+          </div>
+        </div>
+        <button class="pfw-next-btn" id="pfw-step1-next">BB Acts Next →</button>
+      </div>
+
+      <!-- Step 2: BB decision -->
+      <div class="pfw-step locked" id="pfw-step2">
+        <div class="pfw-step-title"><span class="pfw-step-num">2</span> Big Blind's Decision</div>
+        <p class="pfw-desc" id="pfw-bb-prompt">BB must at least match the SB to keep the pot open.</p>
+        <div class="pfw-action-row">
+          <button class="pfw-act-btn pfw-call-btn" id="pfw-bb-call">
+            Call / Match <span id="pfw-bb-call-label">5</span>
+          </button>
+          <div class="pfw-raise-group">
+            <button class="pfw-act-btn pfw-raise-btn" id="pfw-bb-raise">Raise to</button>
+            <input type="text" inputmode="numeric" pattern="[0-9]*" id="pfw-bb-raise-amt" class="pfw-raise-input" placeholder="e.g. 10" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3: Your decision -->
+      <div class="pfw-step locked" id="pfw-step3">
+        <div class="pfw-step-title"><span class="pfw-step-num">3</span> Your Decision</div>
+        <div class="pfw-situation" id="pfw-situation"></div>
+        <!-- AI suggestion -->
+        <div id="pfw-ai-rec" class="pfw-ai-rec hidden"></div>
+        <button type="button" class="pfw-ai-btn" id="pfw-get-advice">🤖 What should I do? (enter cards first)</button>
+        <div class="pfw-action-row" id="pfw-your-actions">
+          <button class="pfw-act-btn pfw-fold-btn" id="pfw-you-fold">Fold</button>
+          <button class="pfw-act-btn pfw-call-btn" id="pfw-you-call">Call <span id="pfw-you-call-label">0</span></button>
+          <div class="pfw-raise-group">
+            <button class="pfw-act-btn pfw-raise-btn" id="pfw-you-raise">Raise to</button>
+            <input type="text" inputmode="numeric" pattern="[0-9]*" id="pfw-you-raise-amt" class="pfw-raise-input" placeholder="amount" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Result -->
+      <div class="pfw-result hidden" id="pfw-result">
+        <div class="pfw-result-inner" id="pfw-result-inner"></div>
+        <button class="analyze-btn pfw-analyze-btn hidden" id="pfw-go-analyze">Analyze Hand ▶</button>
+      </div>
+    </section>
+
+    <main>
+      <!-- Card Input Section -->
+      <section class="card-section">
+        <div class="card-group">
+          <h2>Your Hole Cards</h2>
+          <div class="card-inputs">
+            <div class="card-slot">
+              <select id="hole1-rank" class="rank-select"><option value="">Rank</option></select>
+              <div class="suit-picker" id="hole1-suit"></div>
+            </div>
+            <div class="card-slot">
+              <select id="hole2-rank" class="rank-select"><option value="">Rank</option></select>
+              <div class="suit-picker" id="hole2-suit"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-group">
+          <h2>Community Cards</h2>
+          <div class="board-labels">
+            <span>Flop 1</span><span>Flop 2</span><span>Flop 3</span><span>Turn</span><span>River</span>
+          </div>
+          <div class="card-inputs community">
+            <div class="card-slot" id="board-slot-0">
+              <select id="board0-rank" class="rank-select"><option value="">Rank</option></select>
+              <div class="suit-picker" id="board0-suit"></div>
+            </div>
+            <div class="card-slot" id="board-slot-1">
+              <select id="board1-rank" class="rank-select"><option value="">Rank</option></select>
+              <div class="suit-picker" id="board1-suit"></div>
+            </div>
+            <div class="card-slot" id="board-slot-2">
+              <select id="board2-rank" class="rank-select"><option value="">Rank</option></select>
+              <div class="suit-picker" id="board2-suit"></div>
+            </div>
+            <div class="card-slot" id="board-slot-3">
+              <select id="board3-rank" class="rank-select"><option value="">Rank</option></select>
+              <div class="suit-picker" id="board3-suit"></div>
+            </div>
+            <div class="card-slot" id="board-slot-4">
+              <select id="board4-rank" class="rank-select"><option value="">Rank</option></select>
+              <div class="suit-picker" id="board4-suit"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pot / Bet Context -->
+        <div class="card-group bet-context">
+          <h2>Bet Context</h2>
+          <div class="bet-inputs">
+            <label>Pot Size <input type="text" inputmode="numeric" pattern="[0-9]*" id="pot-size" placeholder="e.g. 100" /></label>
+            <label>Bet to Call <input type="text" inputmode="numeric" pattern="[0-9]*" id="bet-to-call" placeholder="e.g. 20" /></label>
+            <label>Stack Size <input type="text" inputmode="numeric" pattern="[0-9]*" id="stack-size" placeholder="e.g. 500" /></label>
+            <label>Opponents Left <input type="text" inputmode="numeric" pattern="[0-9]*" id="opponents" placeholder="e.g. 2" value="2" /></label>
+          </div>
+        </div>
+
+        <button id="analyze-btn" class="analyze-btn">Analyze Hand ▶</button>
+      </section>
+
+      <!-- Street Betting Tracker (flop / turn / river) -->
+      <section class="sbt-section hidden" id="sbt-section">
+        <div class="sbt-hdr">
+          <h3 id="sbt-title">💰 Flop Betting Round</h3>
+          <button type="button" id="sbt-reset-btn" class="sbt-rst-btn">↺ Reset Round</button>
+        </div>
+        <p class="sbt-hint">Enter each player's action for this street, then click <strong>Apply</strong> to update the pot &amp; bet-to-call for the analyzer.</p>
+        <div id="sbt-rows" class="sbt-rows"></div>
+        <button type="button" class="pfw-ai-btn sbt-ai-btn" id="sbt-ai-btn">🤖 Should I fold, call or raise?</button>
+        <div id="sbt-ai-rec" class="pfw-ai-rec hidden"></div>
+        <div class="sbt-totals" id="sbt-totals"></div>
+        <button type="button" class="analyze-btn sbt-apply-btn" id="sbt-apply-btn">Apply to Analyzer ▶</button>
+      </section>
+
+      <!-- Result Section -->
+      <section class="result-section hidden" id="result-panel">
+        <!-- Win probability bar -->
+        <div class="prob-bar-wrap">
+          <div class="prob-label">
+            <span>Win Probability</span>
+            <span id="win-pct" class="win-pct">0%</span>
+          </div>
+          <div class="prob-bar">
+            <div class="prob-fill" id="prob-fill"></div>
+          </div>
+        </div>
+
+        <!-- Hand strength badge -->
+        <div class="hand-badge" id="hand-badge">—</div>
+
+        <!-- Recommended Action -->
+        <div class="suggestion-panel">
+          <div class="action-recommendation" id="action-rec">—</div>
+        </div>
+
+        <!-- 4-part coach breakdown -->
+        <div class="breakdown-grid">
+          <div class="breakdown-card">
+            <div class="bd-title">🃏 Your Current Hand</div>
+            <div class="bd-body" id="detail-hand"></div>
+          </div>
+          <div class="breakdown-card">
+            <div class="bd-title">🎯 Draws &amp; Outs</div>
+            <div class="bd-body" id="detail-draws"></div>
+          </div>
+          <div class="breakdown-card">
+            <div class="bd-title">🏆 Target Hand to Win</div>
+            <div class="bd-body" id="detail-target"></div>
+          </div>
+          <div class="breakdown-card highlight">
+            <div class="bd-title">💡 Why This Action?</div>
+            <div class="bd-body" id="detail-why"></div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+          <button class="act-btn fold-btn" id="btn-fold">Fold</button>
+          <button class="act-btn call-btn" id="btn-call">Call</button>
+          <button class="act-btn check-btn" id="btn-check">Check</button>
+          <button class="act-btn raise-btn" id="btn-raise">Raise</button>
+        </div>
+        <div class="action-feedback" id="action-feedback"></div>
+        <!-- Showdown (shown after river) -->
+        <div class="declare-winner-wrap hidden" id="declare-winner-wrap"></div>
+      </section>
+    </main>
+
+    <!-- Visual card display -->
+    <section class="card-display" id="card-display"></section>
+
+    <footer>
+      <p>AI Poker Coach · Client-side only · No data sent anywhere</p>
+    </footer>
+  </div>
+
+  <script src="poker.js"></script>
+</body>
+</html>
