@@ -278,7 +278,7 @@ function preFlopCategory(hole) {
 
 // ── Coach reasoning engine ─────────────────────────────────────
 function coachAdvice({ equity, potOddsVal, texture, stage, preFlopCat, hand, draws,
-                       stackSize, pot, betToCall, opponents }) {
+                       stackSize, pot, betToCall, opponents, hole = [], board = [] }) {
 
   const winPct   = Math.round(equity * 100);
   const losePct  = 100 - winPct;
@@ -396,11 +396,87 @@ function coachAdvice({ equity, potOddsVal, texture, stage, preFlopCat, hand, dra
   const handInfo = handPlain[Math.max(0, handRank)];
   const required2 = potOddsVal !== null ? potOddsVal : 0;
 
-  // HAND section
-  handSection.push(`You currently have a <strong>${handName}</strong> — meaning ${handInfo.plain}`);
-  handSection.push(`This is the <strong>${stage.toUpperCase()}</strong> (${stage === 'flop' ? '3 community cards' : stage === 'turn' ? '4th community card just dealt' : 'final 5th card dealt'}).`);
-  handSection.push(`Right now you would win <strong>${winPct} out of 100 times</strong> against ${opponents} opponent${opponents>1?'s':''}.${winPct >= 65 ? ' That is a strong lead.' : winPct >= 45 ? ' That is a close game.' : ' You are behind — be careful.'}`);
+  // Card display helpers
+  const ss = { '♠':'♠','♥':'♥','♦':'♦','♣':'♣' };
+  const rLabel = r => r === 'T' ? '10' : r;
+  const cStr   = c => `<strong>${rLabel(c.rank)}${c.suit}</strong>`;
+  const holeStr  = hole.map(cStr).join(' ');
+  const boardStr = board.map(cStr).join(' ');
 
+  // Highest card in hand
+  const allCards  = [...hole, ...board];
+  const highCard  = allCards.reduce((best, c) => c.val > best.val ? c : best, allCards[0]);
+  const holeHigh  = hole.reduce((best, c) => c.val > best.val ? c : best, hole[0]);
+  const holeLow   = hole.reduce((best, c) => c.val < best.val ? c : best, hole[0]);
+
+  // What beats this hand (next hand up the ranking)
+  const handsAbove = [
+    '', // nothing beats High Card — itself is 0
+    'Two Pair, Three of a Kind, Straight, Flush, Full House, Four of a Kind, or Straight Flush',
+    'Three of a Kind, Straight, Flush, Full House, Four of a Kind, or Straight Flush',
+    'Straight, Flush, Full House, Four of a Kind, or Straight Flush',
+    'Flush, Full House, Four of a Kind, or Straight Flush',
+    'Full House, Four of a Kind, or Straight Flush',
+    'Four of a Kind or Straight Flush',
+    'Straight Flush only',
+    'Nothing — this is the best possible hand',
+  ];
+
+  // What they'd need to upgrade
+  const upgradeHint = [
+    `To improve, you need a community card that matches ${rLabel(holeHigh.rank)} or ${rLabel(holeLow.rank)} to make at least One Pair.`,
+    `To improve from One Pair, you need another matching card to make Two Pair or Three of a Kind.`,
+    `You have Two Pair — you'd need the board to pair one of your pairs to make a Full House.`,
+    `Three of a Kind — if the board pairs any card, you get a Full House. Already very strong.`,
+    `Straight — already powerful. Just watch for flush possibilities on the board.`,
+    `Flush — very strong. Watch out only for paired boards (Full House threat).`,
+    `Full House — almost unbeatable. Only Four of a Kind beats you.`,
+    `Four of a Kind — only a Straight Flush beats you. Effectively unbeatable.`,
+    `Straight Flush / Royal Flush — the absolute best hand. Nothing can beat you.`,
+  ];
+
+  // HAND section — specific, personal, actionable
+  handSection.push(
+    `Your hole cards: ${holeStr} &nbsp;|&nbsp; Board: ${boardStr}.`
+  );
+  handSection.push(
+    `Your best hand: <strong>${handName}</strong> — ${handInfo.plain}`
+  );
+  if (handRank === 0) {
+    handSection.push(
+      `Your highest card is ${cStr(holeHigh)} (value ${holeHigh.val}). On the river with High Card only, `
+      + `you win ONLY if every single opponent also has no pair — which is very unlikely with ${opponents} opponent${opponents>1?'s':''}.`
+    );
+  } else if (handRank === 1) {
+    const pairVal = hand.tiebreakers[0];
+    const pairRank = RANKS[pairVal - 2];
+    const kicker   = hand.tiebreakers[1];
+    handSection.push(
+      `You have a pair of <strong>${rLabel(pairRank)}s</strong> with a <strong>${rLabel(RANKS[kicker-2])}</strong> kicker. `
+      + `One Pair is a weak hand on the river — most opponents with any pair at or above yours will beat you.`
+    );
+  }
+  handSection.push(
+    `This is the <strong>${stage.toUpperCase()}</strong> (${stage === 'flop' ? '3 community cards dealt' : stage === 'turn' ? '4th community card just dealt' : 'final 5th card — no more cards coming'}).`
+  );
+  handSection.push(
+    `Monte Carlo simulation: you win <strong>${winPct} out of 100</strong> times against ${opponents} opponent${opponents>1?'s':''}.`
+    + (winPct >= 65 ? ' <span style="color:#2ecc71">Strong lead.</span>'
+       : winPct >= 45 ? ' <span style="color:#f39c12">Close game — be cautious.</span>'
+       : winPct >= 20 ? ' <span style="color:#e67e22">You are behind — do not call large bets.</span>'
+       : ' <span style="color:#e74c3c">You are a heavy underdog. Fold to any significant bet.</span>')
+  );
+  if (stage === 'river') {
+    // River: no more cards — be direct
+    handSection.push(
+      `⚠️ <strong>No more cards are coming.</strong> What you have NOW is your final hand. `
+      + (winPct < 20
+        ? `With only ${winPct}% chance to win, the only way you win is if all opponents are bluffing or also have weak hands. Fold to any bet.`
+        : `Hands that beat your <strong>${handName}</strong>: ${handsAbove[handRank]}.`)
+    );
+  } else {
+    handSection.push(upgradeHint[Math.max(0, handRank)]);
+  }
   // DRAWS section
   if (draws.drawList.length > 0) {
     draws.drawList.forEach(d => {
@@ -946,7 +1022,7 @@ function analyze() {
   // Advice
   const { action, handSection, drawsSection, targetSection, whySection } = coachAdvice({
     equity, potOddsVal, texture, stage, preFlopCat, hand, draws,
-    stackSize, pot, betToCall, opponents
+    stackSize, pot, betToCall, opponents, hole, board
   });
 
   // ── Render results ──
